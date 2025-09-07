@@ -1,7 +1,7 @@
 from sqlalchemy.orm import sessionmaker
 
 from ..database import engine, Base
-from ..models import Role, User
+from ..models import Role, User, Transaction
 from .. import security
 
 def seed_roles(session):
@@ -70,6 +70,16 @@ def initialize_database():
     finally:
         session.close()
         print("--- Database Initialization Complete ---")
+
+# if __name__ == "__main__":
+#     initialize_database()       # 2. Seed roles first
+#     seed_roles(session)
+        
+#         # 3. Seed initial users after roles are created
+#     seed_initial_users(session)
+#     finally:
+#     session.close()
+#     print("--- Database Initialization Complete ---")
 
 if __name__ == "__main__":
     initialize_database()

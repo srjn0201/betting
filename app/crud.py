@@ -1,5 +1,7 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from . import models, schemas, security
+
 
 # User CRUD
 def get_user_by_username(db: Session, username: str):
@@ -34,6 +36,22 @@ def create_user(db: Session, user: schemas.UserCreate):
 
 def get_user_children(db: Session, user_id: int):
     return db.query(models.User).filter(models.User.parent_user_id == user_id).all()
+
+
+def get_user_balance(db: Session, user_id: int) -> float:
+    """Calculates a user's coin balance by summing their transactions."""
+    
+    total_credits = db.query(func.sum(models.Transaction.amount)).filter(
+        models.Transaction.recipient_id == user_id,
+        models.Transaction.transaction_type.in_(['SYSTEM_DEPOSIT', 'TRANSFER_CREDIT'])
+    ).scalar() or 0.0
+
+    total_debits = db.query(func.sum(models.Transaction.amount)).filter(
+        models.Transaction.sender_id == user_id,
+        models.Transaction.transaction_type == 'TRANSFER_DEBIT'
+    ).scalar() or 0.0
+
+    return total_credits - total_debits
 
 # Role CRUD
 def get_role_by_name(db: Session, role_name: str):

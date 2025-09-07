@@ -33,19 +33,25 @@ class User(Base):
     parent = relationship("User", remote_side=[id], back_populates="children")
     children = relationship("User", back_populates="parent")
     
-    transactions = relationship("Transaction", back_populates="user")
+    sent_transactions = relationship("Transaction", foreign_keys="[Transaction.sender_id]", back_populates="sender")
+    received_transactions = relationship("Transaction", foreign_keys="[Transaction.recipient_id]", back_populates="recipient")
+
     bets = relationship("Bet", back_populates="user")
+
+
 
 
 class Transaction(Base):
     __tablename__ = "transactions"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Null for system deposits
+    recipient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     amount = Column(Float, nullable=False)
     transaction_type = Column(String, nullable=False)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
-    user = relationship("User", back_populates="transactions")
+    sender = relationship("User", foreign_keys=[sender_id], back_populates="sent_transactions")
+    recipient = relationship("User", foreign_keys=[recipient_id], back_populates="received_transactions")
 
 
 class BetStatus(enum.Enum):

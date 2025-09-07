@@ -1,5 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
+from datetime import datetime
 
 # Pydantic models (schemas)
 
@@ -28,6 +29,32 @@ class User(UserBase):
     parent_user_id: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
 
+
+# --- Transaction Schemas ---
+class TransactionBase(BaseModel):
+    amount: float
+
+class TransactionCreate(TransactionBase):
+    sender_id: Optional[int] = None
+    recipient_id: int
+    transaction_type: str
+
+class Transaction(TransactionBase):
+    id: int
+    sender_id: Optional[int] = None
+    recipient_id: int
+    transaction_type: str
+    timestamp: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Coin Transfer Schemas ---
+class CoinTransferRequest(BaseModel):
+    recipient_username: str
+    amount: float
+
+
+# --- Token Schemas ---
 class Token(BaseModel):
     access_token: str
     token_type: str
