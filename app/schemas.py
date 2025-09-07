@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-from typing import Optional
+from typing import Optional , List
 from datetime import datetime
 
 # Pydantic models (schemas)
@@ -28,6 +28,19 @@ class User(UserBase):
     role: Role
     parent_user_id: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
+
+
+# --- Bet Schemas ---
+class Bet(BaseModel):
+    id: int
+    fixture_id: int
+    market_name: str
+    odds: float
+    stake: float
+    status: str # Consider using an Enum here in the future
+    model_config = ConfigDict(from_attributes=True)
+
+
 
 
 # --- Transaction Schemas ---
@@ -61,3 +74,14 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     username: Optional[str] = None
+
+
+
+
+# --- Admin/Test Schemas ---
+class UserDetailsResponse(BaseModel):
+    profile: User
+    balance: float
+    children: List[User]
+    transactions: List[Transaction]
+    bets: List[Bet]

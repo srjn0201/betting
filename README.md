@@ -11,10 +11,10 @@ This project is a backend for a cricket betting application, built with FastAPI,
 ```
 
 ### `app/crud.py`
-*Description: This file contains the Create, Read, Update, and Delete (CRUD) operations for interacting with the database models. It abstracts direct database queries, providing functions to manage users, roles, and calculate user balances. This separation of concerns keeps database logic isolated from the API endpoints.*
+*Description: This file contains the Create, Read, Update, and Delete (CRUD) operations for interacting with the database models. It abstracts direct database queries, providing functions to manage users, roles, calculate user balances, retrieve user transactions, and fetch user bets. This separation of concerns keeps database logic isolated from the API endpoints.*
 ```python
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from . import models, schemas, security
 
 
@@ -71,6 +71,21 @@ def get_user_balance(db: Session, user_id: int) -> float:
 # Role CRUD
 def get_role_by_name(db: Session, role_name: str):
     return db.query(models.Role).filter(models.Role.name == role_name).first()
+
+
+# Transaction CRUD
+def get_user_transactions(db: Session, user_id: int):
+    return db.query(models.Transaction).filter(
+        or_(
+            models.Transaction.sender_id == user_id,
+            models.Transaction.recipient_id == user_id
+        )
+    ).order_by(models.Transaction.timestamp.desc()).all()
+
+
+# Bet CRUD
+def get_user_bets(db: Session, user_id: int):
+    return db.query(models.Bet).filter(models.Bet.user_id == user_id).order_by(models.Bet.id.desc()).all()
 ```
 
 ### `app/database.py`
