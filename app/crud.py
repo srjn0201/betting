@@ -32,6 +32,9 @@ def create_user(db: Session, user: schemas.UserCreate):
     db.refresh(db_user)
     return db_user
 
+def get_user_children(db: Session, user_id: int):
+    return db.query(models.User).filter(models.User.parent_user_id == user_id).all()
+
 # Role CRUD
 def get_role_by_name(db: Session, role_name: str):
     return db.query(models.Role).filter(models.Role.name == role_name).first()
