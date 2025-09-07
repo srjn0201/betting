@@ -67,7 +67,29 @@ def get_user_transactions(db: Session, user_id: int):
         )
     ).order_by(models.Transaction.timestamp.desc()).all()
 
+def create_transaction(db: Session, transaction: schemas.TransactionCreate) -> models.Transaction:
+    """Creates a new transaction record in the database."""
+    db_transaction = models.Transaction(**transaction.model_dump())
+    db.add(db_transaction)
+    db.commit()
+    db.refresh(db_transaction)
+    return db_transaction
+
 
 # Bet CRUD
 def get_user_bets(db: Session, user_id: int):
     return db.query(models.Bet).filter(models.Bet.user_id == user_id).order_by(models.Bet.id.desc()).all()
+
+def create_bet(db: Session, bet: schemas.BetCreate, user_id: int) -> models.Bet:
+    """
+    Creates a new bet record in the database.
+    """
+    db_bet = models.Bet(
+        **bet.model_dump(), 
+        user_id=user_id,
+        status='ACTIVE'  # Bets are always active when created
+    )
+    db.add(db_bet)
+    db.commit()
+    db.refresh(db_bet)
+    return db_bet

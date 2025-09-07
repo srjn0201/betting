@@ -41,6 +41,13 @@ class Bet(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class BetCreate(BaseModel):
+    fixture_id: int
+    market_name: str
+    odds: float
+    stake: float
+
+
 
 
 # --- Transaction Schemas ---

@@ -11,7 +11,7 @@ This project is a backend for a cricket betting application, built with FastAPI,
 ```
 
 ### `app/crud.py`
-*Description: This file contains the Create, Read, Update, and Delete (CRUD) operations for interacting with the database models. It abstracts direct database queries, providing functions to manage users, roles, calculate user balances, retrieve user transactions, and fetch user bets. This separation of concerns keeps database logic isolated from the API endpoints.*
+*Description: This file contains the Create, Read, Update, and Delete (CRUD) operations for interacting with the database models. It abstracts direct database queries, providing functions to manage users, roles, calculate user balances, retrieve user transactions, create new transactions, and fetch user bets. This separation of concerns keeps database logic isolated from the API endpoints.*
 ```python
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
@@ -82,10 +82,32 @@ def get_user_transactions(db: Session, user_id: int):
         )
     ).order_by(models.Transaction.timestamp.desc()).all()
 
+def create_transaction(db: Session, transaction: schemas.TransactionCreate) -> models.Transaction:
+    """Creates a new transaction record in the database."""
+    db_transaction = models.Transaction(**transaction.model_dump())
+    db.add(db_transaction)
+    db.commit()
+    db.refresh(db_transaction)
+    return db_transaction
+
 
 # Bet CRUD
 def get_user_bets(db: Session, user_id: int):
     return db.query(models.Bet).filter(models.Bet.user_id == user_id).order_by(models.Bet.id.desc()).all()
+
+def create_bet(db: Session, bet: schemas.BetCreate, user_id: int) -> models.Bet:
+    """
+    Creates a new bet record in the database.
+    """
+    db_bet = models.Bet(
+        **bet.model_dump(), 
+        user_id=user_id,
+        status='ACTIVE'  # Bets are always active when created
+    )
+    db.add(db_bet)
+    db.commit()
+    db.refresh(db_bet)
+    return db_bet
 ```
 
 ### `app/database.py`
@@ -117,10 +139,10 @@ Base = declarative_base()
 ```
 
 ### `app/main.py`
-*Description: This is the main entry point for the FastAPI application. It initializes the FastAPI app instance and includes various API routers (e.g., for users and transactions). This file acts as the central orchestrator for the API, bringing together different functional modules.*
+*Description: This is the main entry point for the FastAPI application. It initializes the FastAPI app instance and includes various API routers (e.g., for users, transactions, testing, and bets). This file acts as the central orchestrator for the API, bringing together different functional modules.*
 ```python
 from fastapi import FastAPI
-from .routers import users, transactions
+from .routers import users, transactions, test, bets
 
 # models.Base.metadata.create_all(bind=engine)
 
@@ -130,6 +152,8 @@ app = FastAPI()
 app.include_router(users.auth_router) # For /token
 app.include_router(users.user_router) # For /users
 app.include_router(transactions.router) # For /transactions
+app.include_router(test.router) # For /test
+app.include_router(bets.router) # For /bets
 
 @app.get("/")
 def read_root():
@@ -222,10 +246,10 @@ class TokenBlocklist(Base):
 ```
 
 ### `app/schemas.py`
-*Description: This file defines Pydantic models, which are used for data validation, serialization, and deserialization throughout the API. These schemas ensure that incoming request data and outgoing response data conform to expected structures and types, improving data integrity and API reliability.*
+*Description: This file defines Pydantic models, which are used for data validation, serialization, and deserialization throughout the API. These schemas ensure that incoming request data and outgoing response data conform to expected structures and types, improving data integrity and API reliability. It includes schemas for Users, Roles, Transactions, Bets, and Token handling, as well as a detailed `UserDetailsResponse` for administrative purposes.*
 ```python
 from pydantic import BaseModel, ConfigDict
-from typing import Optional
+from typing import Optional , List
 from datetime import datetime
 
 # Pydantic models (schemas)
@@ -254,6 +278,26 @@ class User(UserBase):
     role: Role
     parent_user_id: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
+
+
+# --- Bet Schemas ---
+class Bet(BaseModel):
+    id: int
+    fixture_id: int
+    market_name: str
+    odds: float
+    stake: float
+    status: str # Consider using an Enum here in the future
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BetCreate(BaseModel):
+    fixture_id: int
+    market_name: str
+    odds: float
+    stake: float
+
+
 
 
 # --- Transaction Schemas ---
@@ -287,6 +331,17 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     username: Optional[str] = None
+
+
+
+
+# --- Admin/Test Schemas ---
+class UserDetailsResponse(BaseModel):
+    profile: User
+    balance: float
+    children: List[User]
+    transactions: List[Transaction]
+    bets: List[Bet]
 ```
 
 ### `app/security.py`
@@ -647,6 +702,119 @@ def read_user_children(current_user: models.User = Depends(get_current_user), db
 def health_check():
     """An unprotected endpoint to verify router health."""
     return {"status": "ok"}
+```
+
+### `app/routers/test.py`
+*Description: This router provides an administrative endpoint for retrieving comprehensive details about a specific user, including their profile, balance, children users, transactions, and bets. It is intended for testing and debugging purposes and is restricted to admin users.*
+```python
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from .. import crud, models, schemas
+from ..routers.users import get_current_user, get_db
+
+router = APIRouter(
+    prefix="/test",
+    tags=["Testing"],
+    dependencies=[Depends(get_current_user)]
+)
+
+@router.get("/user-details/{username}", response_model=schemas.UserDetailsResponse)
+def get_user_full_details(username: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    """
+    Provides a complete dump of a user's details. 
+    **This is an admin-only endpoint.**
+    """
+    # 1. Admin-only check
+    if current_user.role.name != 'admin':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this resource."
+        )
+
+    # 2. Get the target user
+    target_user = crud.get_user_by_username(db, username=username)
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User '{username}' not found."
+        )
+
+    # 3. Gather all related data
+    balance = crud.get_user_balance(db, user_id=target_user.id)
+    children = crud.get_user_children(db, user_id=target_user.id)
+    transactions = crud.get_user_transactions(db, user_id=target_user.id)
+    bets = crud.get_user_bets(db, user_id=target_user.id)
+
+    # 4. Assemble and return the response
+    response = schemas.UserDetailsResponse(
+        profile=target_user,
+        balance=balance,
+        children=children,
+        transactions=transactions,
+        bets=bets
+    )
+
+    return response
+```
+
+### `app/routers/bets.py`
+*Description: This router handles API endpoints related to placing bets. It includes logic for validating the user's role (only players can place bets), checking their balance, creating a debit transaction for the stake, and recording the bet. This ensures that betting operations are properly managed and recorded.*
+```python
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from .. import crud, models, schemas
+from ..routers.users import get_current_user, get_db
+
+router = APIRouter(
+    prefix="/bets",
+    tags=["Bets"],
+    dependencies=[Depends(get_current_user)]
+)
+
+@router.post("/", response_model=schemas.Bet, status_code=status.HTTP_201_CREATED)
+def place_bet(bet: schemas.BetCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    """Places a new bet for the authenticated user."""
+    
+    # 1. Verify user role is 'player'
+    if current_user.role.name != 'player':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only users with the 'player' role can place bets."
+        )
+
+    # 2. Check player's balance
+    balance = crud.get_user_balance(db, user_id=current_user.id)
+    if balance < bet.stake:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Insufficient balance. Current balance: {balance}, required: {bet.stake}"
+        )
+
+    # 3. Create debit transaction for the bet stake
+    # For this, we need a recipient for the funds, the "house".
+    # We will use the primary admin user as the house/system recipient.
+    admin_user = crud.get_user_by_username(db, username="admin")
+    if not admin_user:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="System admin user not found. Cannot place bet."
+        )
+
+    stake_transaction = schemas.TransactionCreate(
+        sender_id=current_user.id,
+        recipient_id=admin_user.id, # Money goes to the house (admin)
+        amount=bet.stake,
+        transaction_type='BET_STAKE'
+    )
+    crud.create_transaction(db, transaction=stake_transaction)
+
+    # 4. Create the bet record
+    new_bet = crud.create_bet(db, bet=bet, user_id=current_user.id)
+
+    # 5. Return the newly created bet
+    return new_bet
 ```
 
 ### `requirements.txt`
