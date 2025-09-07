@@ -329,7 +329,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 ```
 
 ### `app/scripts/initialize_database.py`
-*Description: This script is designed for initial database setup. It creates all necessary tables based on the SQLAlchemy models and seeds the database with predefined roles (admin, master, dealer, player) and initial admin/master user accounts. This ensures a consistent starting state for the application's database.*
+*Description: This script is designed for initial database setup. It creates all necessary tables based on the SQLAlchemy models and seeds the database with predefined roles (admin, master, dealer, player) and initial admin/master user accounts. It also includes logic to create an initial coin deposit for the admin user, ensuring a consistent starting state for the application's database.*
 ```python
 from sqlalchemy.orm import sessionmaker
 
@@ -364,10 +364,10 @@ def seed_initial_users(session):
         username="admin",
         hashed_password=security.get_password_hash("adminpassword"),
         role_id=admin_role.id,
-        parent_user_id=None  # Admin has no parent
+        parent_user_id=None
     )
     session.add(admin_user)
-    session.flush()  # Flush to assign an ID to admin_user before using it
+    session.flush()
 
     # 2. Create Master User
     master_role = session.query(Role).filter_by(name='master').one()
@@ -375,9 +375,21 @@ def seed_initial_users(session):
         username="master",
         hashed_password=security.get_password_hash("masterpassword"),
         role_id=master_role.id,
-        parent_user_id=admin_user.id  # Master's parent is the admin
+        parent_user_id=admin_user.id
     )
     session.add(master_user)
+    
+    # --- ADD THIS LOGIC ---
+    # 3. Create the Admin's initial deposit
+    print("Creating initial 1,000,000 coin deposit for admin...")
+    admin_deposit = Transaction(
+        sender_id=None,  # No sender, as it's a system deposit
+        recipient_id=admin_user.id,
+        amount=1000000,
+        transaction_type="SYSTEM_DEPOSIT"
+    )
+    session.add(admin_deposit)
+    # -----------------------
     
     session.commit()
     print("Default admin and master users created.")
