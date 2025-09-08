@@ -7,6 +7,8 @@ from sqlalchemy import (
     ForeignKey,
     DateTime,
     Enum as SQLAlchemyEnum,
+    Boolean,
+    JSON as JSONB
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -52,6 +54,63 @@ class Transaction(Base):
 
     sender = relationship("User", foreign_keys=[sender_id], back_populates="sent_transactions")
     recipient = relationship("User", foreign_keys=[recipient_id], back_populates="received_transactions")
+
+
+# --- Match & Game Data Models ---
+
+class Team(Base):
+    __tablename__ = "teams"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False)
+    short_code = Column(String(4), unique=True, nullable=False)
+    logo_url = Column(String, nullable=True)
+
+    players = relationship("Player", back_populates="team")
+
+class Player(Base):
+    __tablename__ = "players"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    role = Column(String, nullable=False) # e.g., Batsman, Bowler, All-rounder
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
+
+    team = relationship("Team", back_populates="players")
+
+class Fixture(Base):
+    __tablename__ = "fixtures"
+    id = Column(Integer, primary_key=True, index=True)
+    team1_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
+    team2_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
+    match_date = Column(DateTime(timezone=True), nullable=False)
+    status = Column(String, nullable=False) # e.g., Upcoming, Live, Finished
+
+    team1 = relationship("Team", foreign_keys=[team1_id])
+    team2 = relationship("Team", foreign_keys=[team2_id])
+
+class BallByBallEvent(Base):
+    __tablename__ = "ball_by_ball_events"
+    id = Column(Integer, primary_key=True, index=True)
+    fixture_id = Column(Integer, ForeignKey("fixtures.id"), nullable=False)
+    inning = Column(Integer, nullable=False)
+    over = Column(Integer, nullable=False)
+    ball = Column(Integer, nullable=False)
+    batsman_id = Column(Integer, ForeignKey("players.id"), nullable=False)
+    bowler_id = Column(Integer, ForeignKey("players.id"), nullable=False)
+    runs_scored = Column(Integer, nullable=False)
+    is_wicket = Column(Boolean, default=False)
+    commentary_text = Column(String, nullable=False)
+
+    fixture = relationship("Fixture")
+    batsman = relationship("Player", foreign_keys=[batsman_id])
+    bowler = relationship("Player", foreign_keys=[bowler_id])
+
+class OddsSnapshot(Base):
+    __tablename__ = "odds_snapshots"
+    id = Column(Integer, primary_key=True, index=True)
+    ball_by_ball_event_id = Column(Integer, ForeignKey("ball_by_ball_events.id"), nullable=False)
+    odds_data = Column(JSONB, nullable=False)
+
+    event = relationship("BallByBallEvent")
 
 
 class BetStatus(enum.Enum):
